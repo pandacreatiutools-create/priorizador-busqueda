@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Priorizador de Búsqueda</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+  :root {
+    --paper: #e3dcc3; --ink: #262019; --line: #b9ae8e; --panel: #d9d0af;
+    --high: #c1481b; --mid: #b8862e; --low: #7c8570;
+    --attr: #3b6b63; --disu: #8c5330; --clear: #6e7a5e;
+  }
+  body.noche {
+    --paper: #0d0906; --ink: #c24632; --line: #5a241c; --panel: #170f0b;
+    --high: #d4573a; --mid: #a8462c; --low: #7a3324;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--paper); color: var(--ink); padding: 14px; padding-bottom: 60px;
+  }
+  h1 { font-size: 19px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--line); padding-bottom: 12px; margin-bottom: 12px; }
+  .iconbtn { background: none; border: 1px solid var(--line); color: var(--ink); width: 38px; height: 38px; border-radius: 3px; font-size: 18px; }
+  .aviso { font-size: 12.5px; line-height: 1.5; border: 1px dashed var(--line); padding: 10px 12px; border-radius: 3px; margin-bottom: 14px; }
+  fieldset { border: 1px solid var(--line); border-radius: 4px; margin: 0 0 12px; padding: 12px; }
+  legend { font-size: 12px; padding: 0 6px; opacity: .8; }
+  label { display: block; font-size: 12.5px; opacity: .8; margin: 10px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input[type=text], input[type=number], select {
+    width: 100%; background: var(--panel); border: 1px solid var(--line); color: var(--ink);
+    padding: 11px 10px; font-size: 15px; border-radius: 3px; font-family: inherit;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    border: 1px solid var(--line); background: var(--panel); padding: 9px 12px; font-size: 13px;
+    border-radius: 3px; cursor: pointer; min-height: 40px;
+  }
+  .chip.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  details summary { cursor: pointer; font-size: 13px; padding: 8px 0; }
+  .btn-generar {
+    width: 100%; padding: 16px; font-size: 16px; font-weight: 700; border: none; border-radius: 4px;
+    background: var(--high); color: var(--paper); margin: 6px 0 14px; cursor: pointer;
+  }
+  .btn-generar:disabled { opacity: .55; }
+  #log {
+    font-size: 12px; font-family: ui-monospace, "SF Mono", Consolas, monospace; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; max-height: 140px;
+    overflow-y: auto; margin-bottom: 12px; white-space: pre-wrap; display: none;
+  }
+  #mapa { width: 100%; height: 46vh; min-height: 280px; border: 1px solid var(--line); border-radius: 4px; margin-bottom: 14px; }
+  .anillo-header { font-size: 13px; font-weight: 700; margin: 16px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .punto {
+    border: 1px solid var(--line); border-left: 4px solid var(--low); background: var(--panel);
+    border-radius: 3px; padding: 10px 12px; margin-bottom: 8px;
+  }
+  .punto.alta { border-left-color: var(--high); }
+  .punto.media-alta { border-left-color: var(--mid); }
+  .punto.registrado { opacity: .5; }
+  .p-top { display: flex; align-items: center; gap: 8px; }
+  .p-nombre { font-weight: 600; font-size: 14px; flex: 1; }
+  .p-score { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .p-detalle { font-size: 12px; opacity: .78; margin: 6px 0; }
+  .p-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .p-actions button {
+    font-size: 12px; padding: 7px 10px; border: 1px solid var(--line); background: var(--paper);
+    color: var(--ink); border-radius: 3px;
+  }
+  .vacio { font-size: 13px; opacity: .7; border: 1px dashed var(--line); padding: 16px; border-radius: 4px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📍 Priorizador de Búsqueda</h1>
+  <button class="iconbtn" id="btnNoche" title="Modo nocturno">🌙</button>
+</div>
+
+<div class="aviso">
+  Esta herramienta organiza vuestro propio criterio operativo con un reparto de prioridad transparente.
+  No sustituye la valoración del mando del dispositivo ni las estadísticas oficiales de Lost Person
+  Behavior / ISRID. Necesita conexión a internet real (OpenStreetMap y un servicio de elevación).
+</div>
+
+<form id="formBusqueda">
+  <fieldset>
+    <legend>Punto de referencia</legend>
+    <label>Localidad (o "lat, lon" directamente)</label>
+    <input type="text" id="localidad" placeholder='p. ej. "Bocairent, Valencia, España"' required>
+  </fieldset>
+
+  <fieldset>
+    <legend>Perfil del sujeto</legend>
+    <div class="chips" id="chipsPerfil">
+      <div class="chip on" data-val="general">General</div>
+      <div class="chip" data-val="nino">Niño</div>
+      <div class="chip" data-val="mayor">Mayor / desorientación</div>
+      <div class="chip" data-val="excursionista">Excursionista</div>
+      <div class="chip" data-val="conocedor">Conocedor del terreno</div>
+      <div class="chip" data-val="autolesion">Riesgo / aislamiento</div>
+    </div>
+    <div class="row2">
+      <div>
+        <label>Horas transcurridas</label>
+        <input type="number" id="horas" value="2" min="0" step="any">
+      </div>
+      <div>
+        <label>Estado físico</label>
+        <select id="estadoFisico">
+          <option value="bueno">Bueno</option>
+          <option value="reducido">Reducido</option>
+          <option value="herido">Herido / muy limitado</option>
+        </select>
+      </div>
+    </div>
+  </fieldset>
+
+  <details>
+    <summary>Opciones avanzadas (rutina conocida, radios manuales)</summary>
+    <fieldset>
+      <legend>Rutina conocida por la familia</legend>
+      <label>Dirección habitual</label>
+      <select id="rumbo">
+        <option value="">-- ninguna --</option>
+        <option value="n">Norte</option><option value="ne">Noreste</option>
+        <option value="e">Este</option><option value="se">Sureste</option>
+        <option value="s">Sur</option><option value="so">Suroeste</option>
+        <option value="o">Oeste</option><option value="no">Noroeste</option>
+      </select>
+      <label>Destino conocido (lugar, se geocodifica)</label>
+      <input type="text" id="destino" placeholder='p. ej. "Polígono Industrial El Regadiu, Bocairent"'>
+      <label>O coordenadas del destino ("lat,lon")</label>
+      <input type="text" id="destinoCoords" placeholder="38.780,-0.590">
+      <div class="row2">
+        <div><label>Peso del bonus (0-100)</label><input type="number" id="pesoRutina" value="15"></div>
+        <div><label>Tolerancia (grados)</label><input type="number" id="toleranciaRutina" value="90"></div>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Radios de los anillos (metros, opcional)</legend>
+      <div class="row2">
+        <div><label>Pueblo</label><input type="number" id="radioPueblo" value="500"></div>
+        <div><label>Intermedio (vacío = automático)</label><input type="number" id="radioIntermedio" placeholder="auto"></div>
+      </div>
+      <label>Máximo (vacío = estimado por velocidad × horas)</label>
+      <input type="number" id="radioMaximo" placeholder="auto">
+    </fieldset>
+  </details>
+
+  <button type="submit" class="btn-generar" id="btnGenerar">Generar puntos</button>
+</form>
+
+<div id="log"></div>
+<div id="mapa"></div>
+<div id="resultados"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+"use strict";
+
+// =====================================================================
+// 1) LÓGICA DE PUNTUACIÓN (idéntica al script Python priorizador_auto.py)
+// =====================================================================
+const PROFILES = {
+  general:       { pathType: { carretera: 6, camino: 7, sendero: 7, monte: 5, calle: 6 }, distancia: { muy_cerca: 6, cerca: 8, media: 7, lejos: 4 }, attractorBias: 2 },
+  nino:          { pathType: { carretera: 3, camino: 6, sendero: 6, monte: 7, calle: 5 }, distancia: { muy_cerca: 10, cerca: 6, media: 2, lejos: 0 }, attractorBias: 0 },
+  mayor:         { pathType: { carretera: 9, camino: 8, sendero: 4, monte: 2, calle: 8 }, distancia: { muy_cerca: 6, cerca: 8, media: 6, lejos: 3 }, attractorBias: 4 },
+  excursionista: { pathType: { carretera: 4, camino: 7, sendero: 9, monte: 5, calle: 3 }, distancia: { muy_cerca: 3, cerca: 6, media: 8, lejos: 7 }, attractorBias: 1 },
+  conocedor:     { pathType: { carretera: 3, camino: 6, sendero: 6, monte: 8, calle: 2 }, distancia: { muy_cerca: 2, cerca: 5, media: 8, lejos: 8 }, attractorBias: -2 },
+  autolesion:    { pathType: { carretera: 3, camino: 4, sendero: 6, monte: 7, calle: 2 }, distancia: { muy_cerca: 4, cerca: 6, media: 7, lejos: 5 }, attractorBias: -5 },
+};
+const BASE_SPEED_KMH = { general: 3.0, nino: 1.0, mayor: 2.0, excursionista: 4.5, conocedor: 4.0, autolesion: 3.0 };
+const MEANDER_FACTOR = { general: 0.6, nino: 0.3, mayor: 0.55, excursionista: 0.75, conocedor: 0.8, autolesion: 0.5 };
+const ESTADO_FACTOR = { bueno: 1.0, reducido: 0.6, herido: 0.3 };
+const RUMBOS = { n:0, ne:45, e:90, se:135, s:180, so:225, o:270, no:315 };
+
+function suggestRadiusM(profileId, hours, estado, minRadius = 150) {
+  const radiusKm = BASE_SPEED_KMH[profileId] * ESTADO_FACTOR[estado] * MEANDER_FACTOR[profileId] * Math.max(hours, 0.25);
+  return Math.max(minRadius, radiusKm * 1000);
+}
+function toRad(d) { return (d * Math.PI) / 180; }
+function toDeg(r) { return (r * 180) / Math.PI; }
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6371009;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function bearingDeg(lat1, lon1, lat2, lon2) {
+  const phi1 = toRad(lat1), phi2 = toRad(lat2), dLambda = toRad(lon2 - lon1);
+  const x = Math.sin(dLambda) * Math.cos(phi2);
+  const y = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+  return (toDeg(Math.atan2(x, y)) + 360) % 360;
+}
+function angularDiff(a, b) { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; }
+function routineBonus(pointBearing, targets, maxBonus, toleranceDeg) {
+  if (!targets.length) return 0;
+  const best = Math.min(...targets.map((t) => angularDiff(pointBearing, t)));
+  if (best >= toleranceDeg) return 0;
+  return Math.round(maxBonus * (1 - best / toleranceDeg));
+}
+function classifyPathType(tags) {
+  const hw = tags.highway;
+  if (["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified"].includes(hw)) return "carretera";
+  if (["residential", "living_street", "service"].includes(hw)) return "calle";
+  if (hw === "track") return (tags.tracktype === "grade4" || tags.tracktype === "grade5") ? "monte" : "camino";
+  if (["path", "footway", "bridleway", "cycleway"].includes(hw)) return "sendero";
+  return "camino";
+}
+function classifyAtractor(tags, pathType) {
+  if (pathType === "carretera" || pathType === "calle") return "atractor";
+  if (pathType === "monte") return "disuasorio";
+  return tags.lit === "yes" ? "atractor" : "neutro";
+}
+function distanceCategory(d) { if (d < 500) return "muy_cerca"; if (d < 2000) return "cerca"; if (d < 5000) return "media"; return "lejos"; }
+function distanceWeights(profile, hours) {
+  let mult = { muy_cerca: 1, cerca: 1, media: 1, lejos: 1 };
+  if (hours > 8) mult = { muy_cerca: 0.4, cerca: 0.8, media: 1.3, lejos: 1.5 };
+  else if (hours > 3) mult = { muy_cerca: 0.6, cerca: 1.0, media: 1.2, lejos: 1.3 };
+  const out = {}; for (const k in profile.distancia) out[k] = profile.distancia[k] * mult[k]; return out;
+}
+function computeScore(pathType, distCat, atractor, pendiente, profileId, hours) {
+  const profile = PROFILES[profileId], distW = distanceWeights(profile, hours);
+  let score = 50;
+  score += (profile.pathType[pathType] ?? 5) * 3;
+  score += (distW[distCat] ?? 5) * 3;
+  if (atractor === "atractor") score += profile.attractorBias * 2;
+  else if (atractor === "disuasorio") score -= profile.attractorBias * 2;
+  if (pendiente === "fuerte") score -= (profileId === "conocedor" || profileId === "excursionista") ? 2 : 8;
+  else if (pendiente === "moderado") score -= (profileId === "conocedor" || profileId === "excursionista") ? 0 : 3;
+  return score;
+}
+
+// =====================================================================
+// 2) GEOMETRÍA LOCAL (sin librerías GIS externas)
+// =====================================================================
+const M_PER_DEG = 111320;
+function toXY(cLat, cLon, lat, lon) {
+  return [(lon - cLon) * M_PER_DEG * Math.cos(toRad(cLat)), (lat - cLat) * M_PER_DEG];
+}
+function toLatLon(cLat, cLon, x, y) {
+  return [cLat + y / M_PER_DEG, cLon + x / (M_PER_DEG * Math.cos(toRad(cLat)))];
+}
+function segmentCircleCrossing(x1, y1, x2, y2, R) {
+  const inside1 = Math.hypot(x1, y1) <= R, inside2 = Math.hypot(x2, y2) <= R;
+  if (inside1 === inside2) return null;
+  const dx = x2 - x1, dy = y2 - y1;
+  const a = dx * dx + dy * dy, b = 2 * (x1 * dx + y1 * dy), c = x1 * x1 + y1 * y1 - R * R;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0 || a === 0) return null;
+  const sq = Math.sqrt(disc);
+  for (const t of [(-b - sq) / (2 * a), (-b + sq) / (2 * a)]) {
+    if (t >= 0 && t <= 1) return { t, x: x1 + t * dx, y: y1 + t * dy };
+  }
+  return null;
+}
+function findNextJunction(adjacency, startNode, avoidNode, maxSteps = 300) {
+  let current = startNode, prev = avoidNode, distTotal = 0;
+  for (let i = 0; i < maxSteps; i++) {
+    const vecinos = adjacency.get(current);
+    const deg = vecinos ? vecinos.size : 0;
+    const candidatos = vecinos ? [...vecinos.keys()].filter((n) => n !== prev) : [];
+    if (deg !== 2 || candidatos.length === 0) {
+      const nombres = new Set();
+      if (vecinos) for (const [n, e] of vecinos) if (n !== prev && e.tags?.name) nombres.add(e.tags.name);
+      return { node: current, distM: Math.round(distTotal), grado: deg, conectaCon: [...nombres].join(", ") || null };
+    }
+    const nxt = candidatos[0];
+    distTotal += vecinos.get(nxt).length;
+    prev = current; current = nxt;
+  }
+  const vecinos = adjacency.get(current);
+  return { node: current, distM: Math.round(distTotal), grado: vecinos ? vecinos.size : 0, conectaCon: null };
+}
+
+// =====================================================================
+// 3) LLAMADAS EXTERNAS (Nominatim, Overpass, elevación)
+// =====================================================================
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function geocodePlace(place) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(place)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Nominatim respondió " + res.status);
+  const data = await res.json();
+  if (!data.length) throw new Error(`No se pudo geocodificar "${place}"`);
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+}
+
+async function fetchOverpass(lat, lon, radiusM) {
+  const q = `[out:json][timeout:25];(way["highway"](around:${Math.round(radiusM)},${lat},${lon}););out body;>;out skel qt;`;
+  const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(q);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Overpass respondió " + res.status);
+  return res.json();
+}
+
+function buildGraph(overpassData) {
+  const nodeCoords = new Map(), ways = [];
+  for (const el of overpassData.elements) {
+    if (el.type === "node") nodeCoords.set(el.id, { lat: el.lat, lon: el.lon });
+    else if (el.type === "way") ways.push(el);
+  }
+  const adjacency = new Map(), edgesList = [];
+  const ensure = (id) => { if (!adjacency.has(id)) adjacency.set(id, new Map()); };
+  for (const way of ways) {
+    const tags = way.tags || {};
+    for (let i = 0; i < way.nodes.length - 1; i++) {
+      const n1 = way.nodes[i], n2 = way.nodes[i + 1];
+      const c1 = nodeCoords.get(n1), c2 = nodeCoords.get(n2);
+      if (!c1 || !c2) continue;
+      const length = haversineM(c1.lat, c1.lon, c2.lat, c2.lon);
+      ensure(n1); ensure(n2);
+      adjacency.get(n1).set(n2, { length, tags });
+      adjacency.get(n2).set(n1, { length, tags });
+      edgesList.push({ n1, n2, tags });
+    }
+  }
+  return { nodeCoords, adjacency, edgesList };
+}
+
+async function queryElevationsBatch(points, log) {
+  const out = [];
+  for (let i = 0; i < points.length; i += 100) {
+    const chunk = points.slice(i, i + 100);
+    const locs = chunk.map(([lat, lon]) => `${lat},${lon}`).join("|");
+    try {
+      const res = await fetch(`https://api.opentopodata.org/v1/srtm30m?locations=${locs}`);
+      const data = await res.json();
+      out.push(...data.results.map((r) => r.elevation));
+    } catch (e) {
+      log(`  (aviso: falló un lote de elevación -- ${e})`);
+      out.push(...chunk.map(() => null));
+    }
+    if (i + 100 < points.length) await sleep(1100);
+  }
+  return out;
+}
+function classifySlope(distM, e1, e2) {
+  if (distM < 30 || e1 == null || e2 == null) return "desconocido";
+  const pct = Math.abs(e2 - e1) / distM * 100;
+  return pct < 5 ? "llano" : pct < 15 ? "moderado" : "fuerte";
+}
+
+// =====================================================================
+// 4) CRUCES POR ANILLO
+// =====================================================================
+function findCrossingsForRing(graph, clat, clon, R, clusterRadiusM = 20) {
+  const raw = [];
+  for (const { n1, n2, tags } of graph.edgesList) {
+    const c1 = graph.nodeCoords.get(n1), c2 = graph.nodeCoords.get(n2);
+    const [x1, y1] = toXY(clat, clon, c1.lat, c1.lon);
+    const [x2, y2] = toXY(clat, clon, c2.lat, c2.lon);
+    const cross = segmentCircleCrossing(x1, y1, x2, y2, R);
+    if (!cross) continue;
+    const [pLat, pLon] = toLatLon(clat, clon, cross.x, cross.y);
+    const outsideIsN1 = Math.hypot(x1, y1) > R;
+    const exteriorNode = outsideIsN1 ? n1 : n2, interiorNode = outsideIsN1 ? n2 : n1;
+    const pathType = classifyPathType(tags), atractor = classifyAtractor(tags, pathType);
+    const distM = haversineM(clat, clon, pLat, pLon);
+    raw.push({
+      nombre: tags.name || null, tieneNombre: !!tags.name, osmHighway: tags.highway,
+      tipoVia: pathType, atractor, lat: pLat, lon: pLon,
+      distanciaM: Math.round(distM), distanciaCat: distanceCategory(distM),
+      exteriorNode, interiorNode,
+    });
+  }
+  const clusters = [];
+  for (const cand of raw) {
+    let merged = false;
+    for (const c of clusters) {
+      const sameName = cand.tieneNombre && c.tieneNombre && cand.nombre === c.nombre;
+      const veryClose = haversineM(cand.lat, cand.lon, c.lat, c.lon) < clusterRadiusM;
+      if (sameName || veryClose) { if (cand.tieneNombre && !c.tieneNombre) Object.assign(c, cand); merged = true; break; }
+    }
+    if (!merged) clusters.push(cand);
+  }
+  for (const c of clusters) { c.nombre = c.nombre || `${c.tipoVia} sin nombre`; delete c.tieneNombre; }
+  return clusters;
+}
+
+// =====================================================================
+// 5) ORQUESTACIÓN (lo que dispara el botón "Generar puntos")
+// =====================================================================
+let mapa = null, capasGeneradas = [];
+const registrados = new Set(); // en memoria, se reinicia al recargar la página
+
+function log(msg) {
+  const el = document.getElementById("log");
+  el.style.display = "block";
+  el.textContent += msg + "\n";
+  el.scrollTop = el.scrollHeight;
+}
+
+document.getElementById("btnNoche").addEventListener("click", () => document.body.classList.toggle("noche"));
+
+document.querySelectorAll("#chipsPerfil .chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll("#chipsPerfil .chip").forEach((c) => c.classList.remove("on"));
+    chip.classList.add("on");
+  });
+});
+
+document.getElementById("formBusqueda").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = document.getElementById("btnGenerar");
+  btn.disabled = true; btn.textContent = "Generando...";
+  document.getElementById("log").textContent = "";
+  document.getElementById("resultados").innerHTML = "";
+  try {
+    await generarPuntos();
+  } catch (e) {
+    log("ERROR: " + e.message);
+    alert("Ha fallado: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Generar puntos";
+  }
+});
+
+async function generarPuntos() {
+  const perfil = document.querySelector("#chipsPerfil .chip.on").dataset.val;
+  const horas = parseFloat(document.getElementById("horas").value) || 2;
+  const estado = document.getElementById("estadoFisico").value;
+  const localidadTxt = document.getElementById("localidad").value.trim();
+
+  // --- Centro de referencia ---
+  let clat, clon;
+  const matchCoords = localidadTxt.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+  if (matchCoords) {
+    clat = parseFloat(matchCoords[1]); clon = parseFloat(matchCoords[2]);
+    log(`Usando coordenadas directas: ${clat}, ${clon}`);
+  } else {
+    log(`Geocodificando "${localidadTxt}"...`);
+    const c = await geocodePlace(localidadTxt);
+    clat = c.lat; clon = c.lon;
+    log(`  centro: ${clat.toFixed(5)}, ${clon.toFixed(5)}`);
+  }
+
+  // --- Radios de los anillos ---
+  const radioMaximoInput = parseFloat(document.getElementById("radioMaximo").value);
+  let radioMaximo;
+  if (radioMaximoInput) { radioMaximo = radioMaximoInput; }
+  else {
+    radioMaximo = suggestRadiusM(perfil, horas, estado);
+    log(`Radio máximo estimado: ${radioMaximo.toFixed(0)} m (velocidad × estado × factor de desvío × horas)`);
+  }
+  const radioPueblo = parseFloat(document.getElementById("radioPueblo").value) || 500;
+  const radioIntermedioInput = parseFloat(document.getElementById("radioIntermedio").value);
+  const radioIntermedio = radioIntermedioInput || (radioPueblo + radioMaximo) / 2;
+
+  let candidatos = [["pueblo", radioPueblo], ["intermedio", radioIntermedio], ["máximo", radioMaximo]]
+    .sort((a, b) => a[1] - b[1]);
+  const ringsDef = [];
+  for (const [label, r] of candidatos) {
+    if (r <= 0) continue;
+    if (ringsDef.length && r - ringsDef[ringsDef.length - 1][1] < 50) continue;
+    ringsDef.push([label, r]);
+  }
+  for (const [label, r] of ringsDef) log(`Anillo '${label}': ${r.toFixed(0)} m`);
+
+  // --- Rutina conocida ---
+  const targetBearings = [];
+  const destinosGeo = [];
+  const rumboVal = document.getElementById("rumbo").value;
+  if (rumboVal) { targetBearings.push(RUMBOS[rumboVal]); log(`Rutina: dirección ${rumboVal.toUpperCase()} (${RUMBOS[rumboVal]}°)`); }
+  const destinoTxt = document.getElementById("destino").value.trim();
+  if (destinoTxt) {
+    try {
+      const d = await geocodePlace(destinoTxt);
+      const b = bearingDeg(clat, clon, d.lat, d.lon);
+      targetBearings.push(b); destinosGeo.push([destinoTxt, d.lat, d.lon]);
+      log(`Rutina: hacia "${destinoTxt}" -> rumbo ${b.toFixed(0)}°`);
+    } catch (e) {
+      log(`  (aviso: no se pudo geocodificar el destino -- ${e.message}. Prueba con --destino-coords)`);
+    }
+  }
+  const destCoordsTxt = document.getElementById("destinoCoords").value.trim();
+  if (destCoordsTxt) {
+    const m = destCoordsTxt.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+    if (m) {
+      const dlat = parseFloat(m[1]), dlon = parseFloat(m[2]);
+      const b = bearingDeg(clat, clon, dlat, dlon);
+      targetBearings.push(b); destinosGeo.push([destCoordsTxt, dlat, dlon]);
+      log(`Rutina: hacia (${dlat},${dlon}) -> rumbo ${b.toFixed(0)}°`);
+    }
+  }
+  const pesoRutina = parseFloat(document.getElementById("pesoRutina").value) || 15;
+  const toleranciaRutina = parseFloat(document.getElementById("toleranciaRutina").value) || 90;
+
+  // --- Red de caminos (una sola descarga, al radio más grande) ---
+  log("Descargando la red de caminos de OpenStreetMap (puede tardar unos segundos)...");
+  const maxR = Math.max(...ringsDef.map(([, r]) => r));
+  const overpassData = await fetchOverpass(clat, clon, maxR + 300);
+  const graph = buildGraph(overpassData);
+  log(`  red descargada: ${graph.nodeCoords.size} nodos.`);
+
+  // --- Cruces por anillo ---
+  let puntos = [];
+  for (const [label, r] of ringsDef) {
+    const crossings = findCrossingsForRing(graph, clat, clon, r);
+    crossings.forEach((p) => { p.anillo = label; p.radioAnillo = r; });
+    puntos = puntos.concat(crossings);
+    log(`  anillo '${label}': ${crossings.length} salidas.`);
+  }
+  log(`Total: ${puntos.length} salidas en ${ringsDef.length} anillo(s).`);
+  if (!puntos.length) { document.getElementById("resultados").innerHTML = '<div class="vacio">No se han encontrado caminos en esta zona.</div>'; return; }
+
+  // --- Salida real (siguiente cruce) de cada camino ---
+  log("Calculando el siguiente cruce real de cada camino...");
+  for (const p of puntos) {
+    const j = findNextJunction(graph.adjacency, p.exteriorNode, p.interiorNode);
+    const salidaCoords = graph.nodeCoords.get(j.node);
+    p.salidaLat = salidaCoords.lat; p.salidaLon = salidaCoords.lon;
+    p.distanciaSegmentoM = j.distM;
+    p.salidaTipo = j.grado >= 3 ? "cruce" : j.grado === 1 ? "final_camino" : "límite_alcanzado";
+    p.salidaConectaCon = j.conectaCon;
+  }
+
+  // --- Pendiente: el servicio gratuito de elevación no admite peticiones
+  // directas desde páginas web (restricción CORS del propio servicio,
+  // confirmada en su repositorio). No hay forma de arreglarlo desde aquí --
+  // se deja siempre en "desconocido" en la versión web. La versión de
+  // terminal en Python sí puede consultarla (no le afecta esa restricción).
+  log("La pendiente no está disponible en la versión web (el servicio de elevación bloquea peticiones desde navegadores). Usa el script de Python si la necesitas.");
+  puntos.forEach((p) => { p.pendiente = "desconocido"; });
+
+  // --- Puntuación ---
+  const RING_ORDER = { pueblo: 0, intermedio: 1, "máximo": 2 };
+  puntos.forEach((p) => {
+    const base = computeScore(p.tipoVia, p.distanciaCat, p.atractor, p.pendiente, perfil, horas);
+    const bearing = bearingDeg(clat, clon, p.lat, p.lon);
+    const bonus = routineBonus(bearing, targetBearings, pesoRutina, toleranciaRutina);
+    p.rumboDeg = Math.round(bearing);
+    p.bonusRutina = bonus;
+    p.scoreOrden = base + bonus;
+    p.score = Math.max(0, Math.min(100, Math.round(base + bonus)));
+    p.ordenAnillo = RING_ORDER[p.anillo] ?? 9;
+    p.id = `${p.lat.toFixed(6)}_${p.lon.toFixed(6)}`;
+  });
+  puntos.sort((a, b) => a.ordenAnillo - b.ordenAnillo || b.scoreOrden - a.scoreOrden);
+  puntos.forEach((p, i) => { p.rank = i + 1; });
+
+  log("Listo.");
+  dibujarMapa(clat, clon, ringsDef, destinosGeo, puntos);
+  dibujarResultados(puntos, !!targetBearings.length);
+}
+
+// =====================================================================
+// 6) RENDERIZADO: mapa (Leaflet) y lista de resultados
+// =====================================================================
+function colorPorScore(score) { return score >= 90 ? "#c1481b" : score >= 75 ? "#b8862e" : score >= 55 ? "#3b6b63" : "#7c8570"; }
+
+function mapsLink(lat, lon) { return `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`; }
+
+function enlaceHtml(lat, lon, nombre) {
+  const url = mapsLink(lat, lon);
+  const coordTxt = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  return `<div style="margin-top:4px;">
+    📍 ${coordTxt}<br>
+    <a href="${url}" target="_blank" rel="noopener">Abrir en Maps</a> ·
+    <a href="#" onclick="compartirPunto(${lat},${lon},'${(nombre || "").replace(/'/g, "")}'); return false;">Compartir</a>
+  </div>`;
+}
+
+window.compartirPunto = function (lat, lon, nombre) {
+  const url = mapsLink(lat, lon);
+  if (navigator.share) {
+    navigator.share({ title: nombre || "Punto", text: nombre || "Punto", url }).catch(() => {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(url);
+    alert("Enlace copiado:\n" + url);
+  } else {
+    prompt("Copia este enlace:", url);
+  }
+};
+
+function numberIcon(number, color, hollow) {
+  const size = 26;
+  const style = hollow
+    ? `background:#fff; color:${color}; border:3px solid ${color};`
+    : `background:${color}; color:#fff; border:2px solid #fff;`;
+  return L.divIcon({
+    className: "",
+    html: `<div style="${style} width:${size}px; height:${size}px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; font-family:sans-serif; box-shadow:0 1px 3px rgba(0,0,0,.4);">${number}${hollow ? "'" : ""}</div>`,
+    iconSize: [size, size], iconAnchor: [size / 2, size / 2], popupAnchor: [0, -size / 2],
+  });
+}
+
+function dibujarMapa(clat, clon, ringsDef, destinosGeo, puntos) {
+  if (!mapa) mapa = L.map("mapa");
+  capasGeneradas.forEach((l) => mapa.removeLayer(l));
+  capasGeneradas = [];
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(mapa);
+
+  const centroMarker = L.marker([clat, clon], { title: "Punto de referencia" })
+    .bindPopup(`<b>Punto de referencia</b>${enlaceHtml(clat, clon, "Punto de referencia")}`)
+    .bindTooltip("Punto de referencia");
+  centroMarker.addTo(mapa); capasGeneradas.push(centroMarker);
+
+  const ringColors = { pueblo: "#2E7D32", intermedio: "#F9A825", "máximo": "#555555" };
+  for (const [label, r] of ringsDef) {
+    const c = L.circle([clat, clon], { radius: r, color: ringColors[label] || "#555", fill: false, dashArray: "6,6" }).bindTooltip(`Anillo ${label}: ${r.toFixed(0)} m`);
+    c.addTo(mapa); capasGeneradas.push(c);
+  }
+  for (const [etiqueta, dlat, dlon] of destinosGeo) {
+    const m1 = L.marker([dlat, dlon]).bindPopup(`<b>Rutina: ${etiqueta}</b>${enlaceHtml(dlat, dlon, etiqueta)}`).bindTooltip("Rutina: " + etiqueta);
+    const l1 = L.polyline([[clat, clon], [dlat, dlon]], { color: "purple", dashArray: "3,6" });
+    m1.addTo(mapa); l1.addTo(mapa); capasGeneradas.push(m1, l1);
+  }
+  puntos.forEach((p) => {
+    const color = colorPorScore(p.score);
+    const popup = `<b>#${p.rank} ${p.nombre}</b><br>Anillo: ${p.anillo} (${p.radioAnillo.toFixed(0)} m)<br>` +
+      `Tipo: ${p.tipoVia} (${p.osmHighway || "?"})<br>Carácter: ${p.atractor}<br>Pendiente: ${p.pendiente}<br>` +
+      `Distancia: ${p.distanciaM} m<br>Puntuación: <b>${p.score}</b>` + enlaceHtml(p.lat, p.lon, `Entrada #${p.rank} ${p.nombre}`);
+    const marker = L.marker([p.lat, p.lon], { icon: numberIcon(p.rank, color, false) }).bindPopup(popup).bindTooltip(`#${p.rank} ${p.nombre} · ${p.score}`);
+    marker.addTo(mapa); capasGeneradas.push(marker);
+
+    if (p.salidaLat != null) {
+      const line = L.polyline([[p.lat, p.lon], [p.salidaLat, p.salidaLon]], { color, weight: 3, opacity: 0.7 });
+      const salidaPopup = `<b>#${p.rank}' SALIDA de: ${p.nombre}</b><br>Tipo: ${p.salidaTipo === "cruce" ? "cruce con otro camino" : p.salidaTipo === "final_camino" ? "final del camino" : "límite del recorrido"}<br>` +
+        (p.salidaConectaCon ? `Conecta con: ${p.salidaConectaCon}<br>` : "") + `A ${p.distanciaSegmentoM} m de la entrada` + enlaceHtml(p.salidaLat, p.salidaLon, `Salida #${p.rank} ${p.nombre}`);
+      const salidaMarker = L.marker([p.salidaLat, p.salidaLon], { icon: numberIcon(p.rank, color, true) }).bindPopup(salidaPopup).bindTooltip(`Salida #${p.rank} (${p.distanciaSegmentoM} m)`);
+      line.addTo(mapa); salidaMarker.addTo(mapa); capasGeneradas.push(line, salidaMarker);
+    }
+  });
+
+  mapa.setView([clat, clon], 14);
+}
+
+function dibujarResultados(puntos, hayRutina) {
+  const cont = document.getElementById("resultados");
+  cont.innerHTML = "";
+  let anilloActual = null;
+  for (const p of puntos) {
+    if (p.anillo !== anilloActual) {
+      anilloActual = p.anillo;
+      const h = document.createElement("div");
+      h.className = "anillo-header";
+      h.textContent = `Anillo: ${anilloActual}`;
+      cont.appendChild(h);
+    }
+    const div = document.createElement("div");
+    const tier = p.score >= 90 ? "alta" : p.score >= 75 ? "media-alta" : "";
+    div.className = "punto " + tier + (registrados.has(p.id) ? " registrado" : "");
+    const rutinaTxt = hayRutina ? ` · rumbo ${p.rumboDeg}° (bonus +${p.bonusRutina})` : "";
+    div.innerHTML = `
+      <div class="p-top"><span class="p-nombre">#${p.rank} ${p.nombre}</span><span class="p-score">${p.score}</span></div>
+      <div class="p-detalle">${p.tipoVia} · ${p.atractor} · ${p.pendiente} · ${p.distanciaM} m${rutinaTxt}</div>
+      <div class="p-detalle">📍 Entrada: ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)} —
+        <a href="${mapsLink(p.lat, p.lon)}" target="_blank" rel="noopener">Maps</a> ·
+        <a href="#" class="btn-compartir" data-lat="${p.lat}" data-lon="${p.lon}" data-nombre="Entrada #${p.rank} ${p.nombre}">Compartir</a>
+      </div>
+      <div class="p-detalle">Salida: ${p.salidaTipo === "cruce" ? "cruce" : p.salidaTipo === "final_camino" ? "final de camino" : "límite"} a ${p.distanciaSegmentoM} m${p.salidaConectaCon ? " (con " + p.salidaConectaCon + ")" : ""}</div>
+      <div class="p-detalle">📍 Salida: ${p.salidaLat.toFixed(5)}, ${p.salidaLon.toFixed(5)} —
+        <a href="${mapsLink(p.salidaLat, p.salidaLon)}" target="_blank" rel="noopener">Maps</a> ·
+        <a href="#" class="btn-compartir" data-lat="${p.salidaLat}" data-lon="${p.salidaLon}" data-nombre="Salida #${p.rank} ${p.nombre}">Compartir</a>
+      </div>
+      <div class="p-actions"><button data-id="${p.id}">${registrados.has(p.id) ? "Deshacer" : "Registrado ✓"}</button></div>
+    `;
+    div.querySelector("button").addEventListener("click", () => {
+      if (registrados.has(p.id)) registrados.delete(p.id); else registrados.add(p.id);
+      dibujarResultados(puntos, hayRutina);
+    });
+    div.querySelectorAll(".btn-compartir").forEach((a) => {
+      a.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        compartirPunto(parseFloat(a.dataset.lat), parseFloat(a.dataset.lon), a.dataset.nombre);
+      });
+    });
+    cont.appendChild(div);
+  }
+}
+</script>
+</body>
+</html>
