@@ -742,21 +742,42 @@ function colorPorScore(score) { return score >= 80 ? "#c1481b" : score >= 55 ? "
 function mapsLink(lat, lon) { return `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`; }
 
 // Enlace en el popup de cualquier punto (entrada, E, I, cruce interior). Si
-// el punto YA está en la búsqueda, muestra quién lo lleva y su estado --
-// tener toda la información en el propio punto es lo importante en campo.
-// id debe ser único por punto físico -- E e I usan el id de su entrada +
-// sufijo, porque son lugares distintos.
+// el punto YA está en la búsqueda, permite asignar el K9/persona y cambiar
+// el estado directamente ahí -- tener toda la información y poder actuar
+// desde el propio punto es lo importante en campo, sin bajar a la lista.
 function enlaceListaHtml(id, etiqueta, nombre, lat, lon) {
   const entrada = listaTrabajo.find((e) => e.id === id);
   const nombreSeguro = (nombre || "").replace(/'/g, "");
   if (entrada) {
+    const botonesEstado = ESTADOS.map((es) =>
+      `<button onclick="actualizarEstadoDesdeMapa('${id}','${es}'); return false;" style="font-size:11px; padding:3px 7px; margin:2px 3px 0 0; border:1px solid #999; border-radius:3px; ${entrada.estado === es ? `background:${ESTADO_COLOR[es]};color:#fff;border-color:${ESTADO_COLOR[es]};` : "background:#fff;"}">${ESTADO_LABEL[es]}</button>`
+    ).join("");
     return `<div style="margin-top:6px; padding-top:6px; border-top:1px dashed #999;">` +
-      `<b>En la búsqueda</b><br>Asignado a: ${entrada.asignado ? entrada.asignado : "<i>(sin asignar)</i>"}<br>` +
-      `Estado: <b style="color:${ESTADO_COLOR[entrada.estado]};">${ESTADO_LABEL[entrada.estado]}</b><br>` +
-      `<a href="#" onclick="toggleEnLista('${id}','${etiqueta}','${nombreSeguro}',${lat},${lon}); return false;">Quitar de la búsqueda</a></div>`;
+      `<b>En la búsqueda</b><br>` +
+      `<label style="display:block; font-size:11px; margin-top:5px;">Asignado a<br>` +
+      `<input type="text" value="${escaparHtml(entrada.asignado)}" placeholder="K9 / persona" style="width:150px; margin-top:2px; padding:3px 5px;" ` +
+      `onchange="actualizarAsignadoDesdeMapa('${id}', this.value)"></label>` +
+      `<div style="margin-top:6px;">${botonesEstado}</div>` +
+      `<div style="margin-top:8px;"><a href="#" onclick="toggleEnLista('${id}','${etiqueta}','${nombreSeguro}',${lat},${lon}); return false;">Quitar de la búsqueda</a></div></div>`;
   }
   return `<div style="margin-top:6px;"><a href="#" onclick="toggleEnLista('${id}','${etiqueta}','${nombreSeguro}',${lat},${lon}); return false;">➕ Añadir a búsqueda</a></div>`;
 }
+
+window.actualizarAsignadoDesdeMapa = function (id, valor) {
+  const entrada = listaTrabajo.find((e) => e.id === id);
+  if (!entrada) return;
+  entrada.asignado = valor;
+  refrescarMarcadorYPopup(id);
+  dibujarListaTrabajo();
+};
+
+window.actualizarEstadoDesdeMapa = function (id, estado) {
+  const entrada = listaTrabajo.find((e) => e.id === id);
+  if (!entrada) return;
+  entrada.estado = estado;
+  refrescarMarcadorYPopup(id);
+  dibujarListaTrabajo();
+};
 
 window.toggleEnLista = function (id, etiqueta, nombre, lat, lon) {
   const idx = listaTrabajo.findIndex((e) => e.id === id);
@@ -1214,6 +1235,7 @@ function dibujarListaTrabajo() {
     div.innerHTML = `
       <div class="p-top"><span class="p-nombre">${e.etiqueta} ${e.nombre}</span><span class="p-score" style="color:${ESTADO_COLOR[e.estado]};">${ESTADO_LABEL[e.estado]}</span></div>
       <div class="p-detalle">📍 ${e.lat.toFixed(5)}, ${e.lon.toFixed(5)} —
+        <a href="#" class="btn-vermapa" data-id="${e.id}"><b>Ver en el mapa</b></a> ·
         <a href="${mapsLink(e.lat, e.lon)}" target="_blank" rel="noopener">Maps</a> ·
         <a href="#" class="btn-compartir" data-lat="${e.lat}" data-lon="${e.lon}" data-nombre="${e.etiqueta} ${e.nombre}">Compartir</a>
       </div>
@@ -1248,9 +1270,27 @@ function dibujarListaTrabajo() {
         compartirPunto(parseFloat(a.dataset.lat), parseFloat(a.dataset.lon), a.dataset.nombre);
       });
     });
+    div.querySelectorAll(".btn-vermapa").forEach((a) => {
+      a.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        verEnMapa(a.dataset.id);
+      });
+    });
     cont.appendChild(div);
   }
 }
+
+// Centra el mapa en un punto de la lista y abre su popup -- para que sea
+// evidente dónde está, en vez de tener que interpretar coordenadas sueltas.
+function verEnMapa(id) {
+  const entrada = listaTrabajo.find((e) => e.id === id);
+  if (!entrada || !mapa) return;
+  mapa.setView([entrada.lat, entrada.lon], 17);
+  const reg = registroMarcadores[id];
+  if (reg && reg.marker.openPopup) reg.marker.openPopup();
+  document.getElementById("mapaWrapper")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 </script>
+
 </body>
 </html>
